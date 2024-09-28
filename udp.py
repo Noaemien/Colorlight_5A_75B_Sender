@@ -6,7 +6,7 @@ import cv2, base64
 #Code from https://github.com/haraldkubota/colorlight/blob/main/py/detect.py
 ETH_P_ALL = 3
 ETH_FRAME_LEN = 1540
-interface = 'eth0'
+interface = 'enp0s20f0u3'
 dst = b'\x11\x22\x33\x44\x55\x66'  # destination MAC address
 src = b'\x22\x22\x33\x44\x55\x66'  # source MAC address
 proto = b'\x07\x00'                # ethernet frame type

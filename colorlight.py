@@ -1,6 +1,7 @@
 import socket
 import numpy as np
 import cv2, base64
+import time
 
 #Connect and send frames to Colorlight 5A-75B
 class Colorlight:
@@ -10,10 +11,10 @@ class Colorlight:
     DESTINATION_MAC = b'\x11\x22\x33\x44\x55\x66'
     ETH_P_ALL = 3
 
-    def __init__(self, interface: str = 'eth0', verbose: bool = False):
+    def __init__(self, interface: str, verbose: bool):
         self.interface = interface
         self.verbose = verbose
-
+        print(interface, self.verbose)
         self.init_socket()
         if self.verbose:
             self.detect_colorlight_5A75B()
@@ -22,8 +23,18 @@ class Colorlight:
 
 
     def init_socket(self):
+        if self.verbose:
+            print("Binding to interface " + self.interface, flush=True)
         self.s =  socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.htons(self.ETH_P_ALL))
         self.s.bind((self.interface, 0))
+        #self.s.setsockopt(socket.SOL_SOCKET, 25, str("enp0s20f0u4" + '\0').encode('utf-8'))
+        for i in range(100):
+            try:
+                
+                pass
+            except:
+                continue
+            #print("Worked with", i, flush=True)
     
     def __send(self, frame_type: bytes, payload: bytes):
         self.s.sendall(self.DESTINATION_MAC + self.SOURCE_MAC + frame_type + payload)
@@ -119,23 +130,47 @@ class Colorlight:
         payload[25] = 0xFF #Green brightness
         payload[26] = 0xFF #Blue brightness
         #print("Display Frame Data: ", bytearray(data))
-        self.__send(frame_type, bytearray(data))  
+        self.__send(frame_type, bytearray(payload))  
 
     #TODO make modular: this works only for set dimentions
     def send_row(self, row, row_number: int):
+        #t1 = time.time()
         frame_type = b'\x55'
         horizontal_offset = 0
-        pixel_count = 128
+        pixel_count = 256
         pixel_data = [bytes([pixel[0]]) + bytes([pixel[1]]) + bytes([pixel[2]]) for pixel in row] #[b'\x00\x00\xFF' for pixel in row]
-        data = (127-row_number).to_bytes(2, 'big') + horizontal_offset.to_bytes(2, 'big') + pixel_count.to_bytes(
+        data = (row_number).to_bytes(2, 'big') + horizontal_offset.to_bytes(2, 'big') + pixel_count.to_bytes(
             2, 'big') + b'\x08\x88'
-        data += b''.join(pixel_data)
+        data += b''.join(pixel_data[:256])
+        self.__send(frame_type, data)
+        #t2 = time.time()
+        #print("p1:", t2-t1)
+
+        #t1 = time.time()
+        horizontal_offset = 256
+        pixel_count = 128
+        data = (row_number).to_bytes(2, 'big') + horizontal_offset.to_bytes(2, 'big') + pixel_count.to_bytes(
+            2, 'big') + b'\x08\x88'
+        data += b''.join(pixel_data[256:384])
         self.__send(frame_type, data) 
+        #t2 = time.time()
+        #print("p2:", t2 - t1)
+
+
+        # horizontal_offset = 512
+        # data = (row_number).to_bytes(2, 'big') + horizontal_offset.to_bytes(2, 'big') + pixel_count.to_bytes(
+        #     2, 'big') + b'\x08\x88'
+        # data += b''.join(pixel_data[512:768])
+        # self.__send(frame_type, data) 
 
     def send_frame(self, frame):
+        t1 = time.time()
         for i, row in enumerate(frame):
             self.send_row(row, i)
-        self.display(2)
+        self.display(255)
+        t2 = time.time()
+        #print("image:", t2-t1)
+        #time.sleep(0.01)
   
 
 # #Detect Colorlight 5A-75B
@@ -203,31 +238,31 @@ class Colorlight:
 #         data += b''.join(pixel_data)
 #         colorlight_socket.send(dst + src + proto + data)
         
+if __name__ == "__main__":
+    colorlight = Colorlight(interface='enp0s20f0u4', verbose=True)
 
-colorlight = Colorlight()
+    UDP_IP = "192.168.0.26" #rpi ip
+    UDP_PORT = 5005
 
-UDP_IP = "192.168.0.26" #rpi ip
-UDP_PORT = 5005
-
-udp_sock = socket.socket(socket.AF_INET, # Internet
-                     socket.SOCK_DGRAM) # UDP
-udp_sock.bind((UDP_IP, UDP_PORT))
-#udp_sock.setblocking(0)
-i = 0
-while True:
-    #TODO Latency upgrade
-    data, addr = udp_sock.recvfrom(65536) # buffer size is 1024 bytes
-    data = base64.b64decode(data,' /')
-    npdata = np.frombuffer(data,dtype=np.uint8)
-    frame = cv2.imdecode(npdata,1)
-    #cv2.imshow("RECEIVING VIDEO",frame)
-    #print(frame.shape)
-    colorlight.send_frame(frame)
-    #print("frame sent")
-    key = cv2.waitKey(1) & 0xFF
-    if key == ord('q'):
-        udp_sock.close()
-        break
+    udp_sock = socket.socket(socket.AF_INET, # Internet
+                        socket.SOCK_DGRAM) # UDP
+    udp_sock.bind((UDP_IP, UDP_PORT))
+    #udp_sock.setblocking(0)
+    i = 0
+    while True:
+        #TODO Latency upgrade
+        data, addr = udp_sock.recvfrom(65536) # buffer size is 1024 bytes
+        data = base64.b64decode(data,' /')
+        npdata = np.frombuffer(data,dtype=np.uint8)
+        frame = cv2.imdecode(npdata,1)
+        #cv2.imshow("RECEIVING VIDEO",frame)
+        #print(frame.shape)
+        colorlight.send_frame(frame)
+        #print("frame sent")
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            udp_sock.close()
+            break
 
 
-colorlight.s.close()
+    colorlight.s.close()
